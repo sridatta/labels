@@ -73,7 +73,7 @@
     }
 
     async function createPdf(data) {
-        const url = '/template.pdf'
+        const url = './template.pdf'
         const existingPdfBytes = await fetch(url).then(res => res.arrayBuffer())
         const templateDoc = await PDFLib.PDFDocument.load(existingPdfBytes)
         const pdfDoc = await PDFLib.PDFDocument.create();
