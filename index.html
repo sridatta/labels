@@ -1,0 +1,117 @@
+<html>
+
+<head>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/papaparse@latest/papaparse.min.js"></script>
+</head>
+
+<body>
+    <input type="file" id="upload" accept=".csv">
+    <iframe id="pdf" style="width: 100%; height: 100%;"></iframe>
+</body>
+<script type="module">
+    import { faker } from 'https://cdn.skypack.dev/@faker-js/faker';
+
+    const TOP_MARGIN = 36;
+    const LEFT_MARGIN = 15;
+    const LABEL_HEIGHT = 72;
+    const LABEL_WIDTH = 200;
+    const PADDING_TOP = 10;
+    const PADDING_LEFT = 10;
+    const PADDING_BOTTOM = 10;
+
+    const NUM_ROWS = 10;
+    const NUM_COLUMNS = 3;
+
+    function convertY(height, pos) {
+        return height - pos;
+    }
+
+    function drawLines(page, x, y, lines) {
+        let currentY = y;
+        for (const line of lines.reverse()) {
+            if (!line) {
+                continue;
+            }
+            page.drawText(line, { x: x, y: currentY, size: 12 })
+            currentY += 14;
+        }
+    }
+
+    function getXForColumn(column) {
+        return LEFT_MARGIN + (LABEL_WIDTH * column);
+    }
+
+    function getYForRow(row) {
+        return TOP_MARGIN + (LABEL_HEIGHT * row);
+    }
+
+    function convertGlobalIndexToPageAndIndex(index) {
+        const pageNumber = Math.floor(index / (NUM_ROWS * NUM_COLUMNS));
+        const localIndex = index % (NUM_ROWS * NUM_COLUMNS);
+        return { pageNumber, localIndex };
+    }
+
+    function convertIndexToRowAndColumn(index) {
+        const column = Math.floor(index / NUM_ROWS);
+        const row = index % NUM_ROWS;
+        return { row, column };
+    }
+
+    function generateFakeData(count) {
+        const data = [];
+        for (let i = 0; i < count; i++) {
+            data.push({
+                name: faker.name.fullName(),
+                address: faker.address.streetAddress(),
+                address2: Math.random() < 0.5 ? faker.address.secondaryAddress() : null,
+                cityStateZip: `${faker.address.city()}, ${faker.address.stateAbbr()}, ${faker.address.zipCode()}`
+            })
+        }
+        return data;
+    }
+
+    async function createPdf(data) {
+        const url = '/template.pdf'
+        const existingPdfBytes = await fetch(url).then(res => res.arrayBuffer())
+        const templateDoc = await PDFLib.PDFDocument.load(existingPdfBytes)
+        const pdfDoc = await PDFLib.PDFDocument.create();
+
+        const numPages = Math.ceil(data.length / (NUM_ROWS * NUM_COLUMNS));
+        const zeroes = new Array(numPages).fill(0);
+
+        const copiedPages = await pdfDoc.copyPages(templateDoc, zeroes);
+        for (const copiedPage of copiedPages) {
+            pdfDoc.addPage(copiedPage);
+        }
+
+        const pages = pdfDoc.getPages()
+        const firstPage = pages[0]
+        const { width, height } = firstPage.getSize()
+        for (const [i, entry] of data.entries()) {
+            const {pageNumber, localIndex} = convertGlobalIndexToPageAndIndex(i)
+            const {row, column} = convertIndexToRowAndColumn(localIndex);
+            drawLines(pages[pageNumber], getXForColumn(column) + PADDING_LEFT, getYForRow(row) + PADDING_BOTTOM,
+                [`${entry["FIRST NAME"]} ${entry["LAST NAME"]}`,
+                entry["ADDRESS LINE 1"],
+                entry["ADDRESS LINE 2"],
+                `${entry["CITY"]}, ${entry["STATE"]} ${entry["ZIP"]}`]);
+        }
+        const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
+        document.getElementById('pdf').src = pdfDataUri;
+    }
+
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        Papa.parse(file, {
+            header: true,
+            complete: function (results) {
+                createPdf(results.data);
+            }
+        })
+    }
+    document.getElementById('upload').addEventListener('change', handleFileSelect, false);
+</script>
+
+</html>
